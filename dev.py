@@ -41,6 +41,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -197,9 +198,24 @@ def build(args: argparse.Namespace) -> None:
     ldflags = f"-X main.ClientVersion={version}"
 
     processes = []
-    for goos, goarch, output in BUILD_TARGETS:
+    targets = BUILD_TARGETS
+    if args.single:
+        os_name = platform.system().lower()
+        architecture = platform.machine().lower()
+        if architecture == "aarch64":
+            architecture = "arm64"
+        for target in BUILD_TARGETS:
+            if target[0] != os_name:
+                continue
+            if target[1] != architecture:
+                continue
+            targets = [target]
+            break
+        print(f"Single binary build for current platform: {targets}")
+        
+    for goos, goarch, output in targets:
         build_path = os.path.join(out_dir, output)
-        env = {**os.environ, "GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "0"}
+        env = {**os.environ, "GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "1"}
         proc = subprocess.Popen(
             ["go", "build", "-o", build_path, "-ldflags", ldflags, "."],
             env=env,
@@ -716,6 +732,7 @@ def main():
 
     p_build = sub.add_parser("build", help="Cross-compile the Client for all platforms.")
     p_build.add_argument("--out", default="out", help="Output directory (default: ./out).")
+    p_build.add_argument("--single", action="store_true", help="Skip cross-compilation, compile just for current platform.")
     p_build.set_defaults(func=build)
 
     p_run = sub.add_parser("run", help="Build for the current platform and run the Client standalone.")
