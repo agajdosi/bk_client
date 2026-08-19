@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"fyne.io/systray"
 )
@@ -44,7 +45,6 @@ var trayIcon []byte
 func runTray(serverURL, listenAddr string) {
 	onReady := func() {
 		systray.SetIcon(trayIcon)
-		systray.SetTitle("Blendkit-Client")
 		systray.SetTooltip(fmt.Sprintf("Blendkit-Client v%s — %s", ClientVersion, listenAddr))
 
 		mVersion := systray.AddMenuItem(fmt.Sprintf("Blendkit-Client v%s", ClientVersion), "")
@@ -90,7 +90,22 @@ func runTray(serverURL, listenAddr string) {
 
 // openInBrowser opens the given URL in the default web browser on Windows.
 func openInBrowser(url string) {
-	if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start(); err != nil {
+	var cmd string
+	var args []string
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "rundll32"
+		args = []string{"url.dll,FileProtocolHandler", url}
+	case "darwin":
+		cmd = "open"
+		args = []string{url}
+	default: // WSL is not a valid user path, so we do not handle it in here
+		cmd = "xdg-open"
+		args = []string{url}
+	}
+
+	err := exec.Command(cmd, args...).Start()
+	if err != nil {
 		BKLog.Printf("%s Could not open browser for %s: %v", EmoWarning, url, err)
 	}
 }
