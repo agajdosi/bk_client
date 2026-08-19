@@ -196,7 +196,8 @@ def build(args: argparse.Namespace) -> None:
     """
     version = read_client_version()
     out_dir = os.path.abspath(os.path.join(args.out, f"v{version}"))
-    shutil.rmtree(args.out)
+    if os.path.isdir(args.out):
+        shutil.rmtree(args.out)
     os.makedirs(out_dir, exist_ok=True)
     ldflags = f"-X main.ClientVersion={version}"
 
