@@ -184,9 +184,11 @@ def read_client_version() -> str:
 
 
 def build(args: argparse.Namespace) -> None:
-    """Cross-compile the Client for all supported platforms.
+    """Compile the Blendkit Client for current platform so it can be used for local testing
+    or later used in GitHub actions for multi-platform release build. Cross-compilation is
+    not possible as parts of the Blendkit Client requires CGO.
 
-    Binaries are written to ``<out>/v<version>/`` so the directory name matches
+    Binary is written to ``<out>/v<version>/`` so the directory name matches
     the format expected by the add-on repos' ``copy_client_binaries`` step.
 
     Args:
@@ -194,56 +196,40 @@ def build(args: argparse.Namespace) -> None:
     """
     version = read_client_version()
     out_dir = os.path.abspath(os.path.join(args.out, f"v{version}"))
+    shutil.rmtree(args.out)
     os.makedirs(out_dir, exist_ok=True)
     ldflags = f"-X main.ClientVersion={version}"
 
-    processes = []
-    targets = BUILD_TARGETS
-    if args.single:
-        os_name = platform.system().lower()
-        architecture = platform.machine().lower()
-        if architecture == "aarch64":
-            architecture = "arm64"
-        for target in BUILD_TARGETS:
-            if target[0] != os_name:
-                continue
-            if target[1] != architecture:
-                continue
-            targets = [target]
-            break
-        print(f"Single binary build for current platform: {targets}")
+    os_name = platform.system().lower()
+    architecture = platform.machine().lower()
+    if architecture == "aarch64":
+        architecture = "arm64"
+    for target in BUILD_TARGETS:
+        if target[0] != os_name:
+            continue
+        if target[1] != architecture:
+            continue
+        goos, goarch, bin_name = target
+        break
+    print(f"Building for {goos} ({goarch}), binary name: {bin_name}")
         
-    for goos, goarch, output in targets:
-        build_path = os.path.join(out_dir, output)
-        env = {**os.environ, "GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "1"}
-        proc = subprocess.Popen(
-            ["go", "build", "-o", build_path, "-ldflags", ldflags, "."],
-            env=env,
-            cwd=CLIENT_DIR,
-        )
-        processes.append(((goos, goarch), proc))
+    build_path = os.path.join(out_dir, bin_name)
+    env = {**os.environ, "GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "1"}
+    proc = subprocess.Popen(
+        ["go", "build", "-o", build_path, "-ldflags", ldflags, "."],
+        env=env,
+        cwd=CLIENT_DIR,
+    )
+    print(f"Blendkit-Client v{version} build started.")
 
-    print(f"Blendkit-Client v{version} build started for {len(processes)} platforms.")
-    builds_ok = True
-    for target, proc in processes:
-        proc.wait()
-        if proc.returncode != 0:
-            print(f"Client build {target} failed")
-            builds_ok = False
-
-    if not builds_ok:
+    proc.wait()
+    if proc.returncode != 0:
+        print(f"Client build {target} failed")
         sys.exit(1)
-    print(f"Blendkit-Client v{version} builds completed in {out_dir}.")
+
+    print(f"Blendkit-Client v{version} build completed in {out_dir}.")
 
     zip_path = package(out_dir, version)
-
-    # Ship only the bundle: the per-platform binaries are now inside
-    # bk_client.zip, so drop the loose copies and leave a single release
-    # artifact in the output directory.
-    for _goos, _goarch, output in BUILD_TARGETS:
-        bin_path = os.path.join(out_dir, output)
-        if os.path.isfile(bin_path):
-            os.remove(bin_path)
     print(f"Release artifact: {zip_path}")
 
 
@@ -730,9 +716,8 @@ def main():
     parser = argparse.ArgumentParser(description="Blendkit-Client developer helper.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_build = sub.add_parser("build", help="Cross-compile the Client for all platforms.")
+    p_build = sub.add_parser("build", help="Compile the Client for current platform.")
     p_build.add_argument("--out", default="out", help="Output directory (default: ./out).")
-    p_build.add_argument("--single", action="store_true", help="Skip cross-compilation, compile just for current platform.")
     p_build.set_defaults(func=build)
 
     p_run = sub.add_parser("run", help="Build for the current platform and run the Client standalone.")
