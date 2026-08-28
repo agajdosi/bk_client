@@ -129,8 +129,8 @@ func init() {
 	TaskCancelCh = make(chan *TaskCancel, 1000)
 	TaskErrorCh = make(chan *TaskError, 1000)
 
-	BKLog = log.New(os.Stdout, "⬡  ", log.LstdFlags)   // Hexagon like Blendkit logo
-	ChanLog = log.New(os.Stdout, "<- ", log.LstdFlags) // Same symbols as channel in Go
+	BKLog = log.New(os.Stdout, "⬡  ", log.LstdFlags|log.Lmicroseconds)   // Hexagon like Blendkit logo
+	ChanLog = log.New(os.Stdout, "<- ", log.LstdFlags|log.Lmicroseconds) // Same symbols as channel in Go
 }
 
 // Endless loop to handle channels

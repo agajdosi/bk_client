@@ -620,6 +620,47 @@ func TestTaskFinish(t *testing.T) {
 	}
 }
 
+func BenchmarkNewTask(b *testing.B) {
+	benches := []struct {
+		name     string
+		data     interface{}
+		appID    int
+		taskID   string
+		taskType string
+	}{
+		{
+			name:     "New task with nil data",
+			data:     nil,
+			appID:    1001,
+			taskID:   "task1",
+			taskType: "download",
+		},
+		{
+			name:     "New task with map data",
+			data:     map[string]interface{}{"key": "value"},
+			appID:    2000,
+			taskID:   "task2",
+			taskType: "upload",
+		},
+		{
+			name:     "New task with slice data",
+			data:     []string{"item1", "item2"},
+			appID:    3000,
+			taskID:   "task3",
+			taskType: "process",
+		},
+	}
+
+	for _, bench := range benches {
+		b.Run(bench.name, func(b *testing.B) {
+			for b.Loop() {
+				NewTask(bench.data, bench.appID, bench.taskID, bench.taskType)
+			}
+		})
+	}
+
+}
+
 func TestNewTask(t *testing.T) {
 	tests := []struct {
 		name     string

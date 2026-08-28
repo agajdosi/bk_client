@@ -79,9 +79,10 @@ You can also work directly in the `client/` directory with the Go toolchain:
 
 ```sh
 cd client
-go test ./...                  # run all Go tests (incl. the API drift test)
-go generate ./...              # regenerate docs/openapi.json and docs/API.md
-go build .                     # build a Client for the current platform
+go test ./...                       # run all Go tests (incl. the API drift test)
+go test -benchmem -run=^$ -bench=.  # run performance benchmarks
+go generate ./...                   # regenerate docs/openapi.json and docs/API.md
+go build .                          # build a Client for the current platform
 ```
 
 ## API
