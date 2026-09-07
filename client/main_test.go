@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
@@ -1014,4 +1015,189 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	m.response.Request = req
 	return m.response, nil
+}
+
+// Mock the real func SubscribeNewApp. Keep the global Tasks map manipulation.
+// But ignore spawning goroutines fetching the online resources.
+func mockSubscribeNewApp(data MinimalTaskData) {
+	Tasks[data.AppID] = make(map[string]*Task)
+	// ignore rest
+}
+
+func mockReportHandler(w http.ResponseWriter, r *http.Request) {
+	reportHandlerDo(w, r, mockSubscribeNewApp)
+}
+
+func BenchmarkReportHandler(b *testing.B) {
+	testCases := []struct {
+		name               string
+		accessingSoftwares []GetReportData
+	}{
+		{
+			name: "Single software spams",
+			accessingSoftwares: []GetReportData{
+				{
+					ProjectName: "first project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           1111,
+						BlenderVersion:  "5.0.1",
+						AddonVersion:    "3.20.1",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+			},
+		},
+		{
+			name: "Two softwares spams",
+			accessingSoftwares: []GetReportData{
+				{
+					ProjectName: "first project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           1111,
+						BlenderVersion:  "5.0.1",
+						AddonVersion:    "3.20.1",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+				{
+					ProjectName: "second project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           2222,
+						BlenderVersion:  "5.0.2",
+						AddonVersion:    "3.20.2",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+			},
+		},
+		{
+			name: "Four softwares spams",
+			accessingSoftwares: []GetReportData{
+				{
+					ProjectName: "first project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           1111,
+						BlenderVersion:  "5.0.1",
+						AddonVersion:    "3.20.1",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+				{
+					ProjectName: "second project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           2222,
+						BlenderVersion:  "5.0.2",
+						AddonVersion:    "3.20.2",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+				{
+					ProjectName: "third project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           3333,
+						BlenderVersion:  "5.0.3",
+						AddonVersion:    "3.20.3",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+				{
+					ProjectName: "fourth project",
+					MinimalTaskData: MinimalTaskData{
+						AppID:           4444,
+						BlenderVersion:  "5.0.4",
+						AddonVersion:    "3.20.4",
+						PlatformVersion: "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+					},
+				},
+			},
+		},
+	}
+
+	BKLog = log.New(io.Discard, "⬡  ", log.LstdFlags|log.Lmicroseconds)
+	for _, testCase := range testCases {
+		b.Run(testCase.name, func(b *testing.B) {
+			TasksMux.Lock()
+			Tasks = make(map[int]map[string]*Task)
+			TasksMux.Unlock()
+			lastReportAccessMux.Lock()
+			lastReportAccess = time.Time{}
+			lastReportAccessMux.Unlock()
+
+			b.RunParallel(func(pb *testing.PB) {
+				i := 0
+				handler := http.HandlerFunc(mockReportHandler)
+
+				for pb.Next() {
+					i++
+					accessingSoftware := testCase.accessingSoftwares[i%len(testCase.accessingSoftwares)]
+
+					// marshaled json []byte could be prepared in testCases, saving some overhead
+					jsonData, err := json.Marshal(accessingSoftware)
+					if err != nil {
+						b.Errorf("cannot marshal test data")
+					}
+
+					responseRecorder := httptest.NewRecorder()
+					req, err := http.NewRequest("GET", "/report", bytes.NewBuffer(jsonData))
+					if err != nil {
+						b.Errorf("could not create testing request: %v", err)
+					}
+					handler.ServeHTTP(responseRecorder, req)
+					if status := responseRecorder.Code; status != http.StatusOK {
+						b.Errorf("handler returned wrong status code: %v", status)
+					}
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkReportHandlerOLD(b *testing.B) {
+	type goroutineConfig struct {
+		title  string
+		number int
+	}
+	testCases := []struct {
+		name       string
+		goroutines []goroutineConfig
+	}{
+		{
+			name: "Single goroutine",
+			goroutines: []goroutineConfig{
+				{title: "First", number: 10},
+			},
+		},
+		{
+			name: "Two goroutines",
+			goroutines: []goroutineConfig{
+				{title: "First", number: 10},
+				{title: "Second", number: 20},
+			},
+		},
+		{
+			name: "Three goroutines",
+			goroutines: []goroutineConfig{
+				{title: "First", number: 10},
+				{title: "Second", number: 20},
+				{title: "Third", number: 30},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		b.Run(testCase.name, func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				i := 0
+				r := rand.New(rand.NewPCG(2, 2))
+				for pb.Next() {
+					idx := r.IntN(len(testCase.goroutines))
+					goroutine := testCase.goroutines[idx]
+					sleepTime := r.IntN(goroutine.number * int(time.Millisecond))
+					time.Sleep(time.Duration(sleepTime))
+					fmt.Printf("%s goroutine slept for %v ns\n", goroutine.title, sleepTime)
+					i++
+				}
+			})
+		})
+	}
 }

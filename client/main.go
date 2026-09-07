@@ -607,10 +607,16 @@ func shutdownHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// A wrapper around reportHandlerDo which actually does the heavylifting.
+// This wrapper is mocked in tests, so the SubscribeNewApp does not HTTP requests.
+func reportHandler(w http.ResponseWriter, r *http.Request) {
+	reportHandlerDo(w, r, SubscribeNewApp)
+}
+
 // Handles report for subscribed Blender add-ons.
 // Validates if the request contains required data and if the version of this Client
 // matches the Client version which add-on expects. If not the request is rejected.
-func reportHandler(w http.ResponseWriter, r *http.Request) {
+func reportHandlerDo(w http.ResponseWriter, r *http.Request, funcSubscribeNewApp func(MinimalTaskData)) {
 	lastReportAccessMux.Lock()
 	lastReportAccess = time.Now()
 	lastReportAccessMux.Unlock()
@@ -633,6 +639,7 @@ func reportHandler(w http.ResponseWriter, r *http.Request) {
 
 	if data.AddonVersion == "" { // Old versions of add-on does not send AddonVersion
 		BKLog.Printf("%v Add-on (probably v3.11 or less) requesting /report rejected.", EmoWarning)
+		BKLog.Printf("JSON: %v", data)
 		http.Error(w, "Unsupported add-on version. Use another Port and start older Client/Daemon there.", http.StatusForbidden) // 403
 		return
 	}
@@ -655,7 +662,7 @@ func reportHandler(w http.ResponseWriter, r *http.Request) {
 			BlenderVersion:  data.BlenderVersion,
 			PlatformVersion: data.PlatformVersion,
 		}
-		SubscribeNewApp(mData)
+		funcSubscribeNewApp(mData) // call SubscribeNewApp() in production, mock in test
 	}
 
 	taskID := uuid.New().String()
