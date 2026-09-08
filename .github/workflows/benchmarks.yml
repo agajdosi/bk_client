@@ -1,0 +1,37 @@
+name: Go Example
+on:
+  push:
+
+permissions:
+  contents: write
+  deployments: write
+  pull-requests: write
+
+jobs:
+  benchmark:
+    name: Run Go benchmark example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "stable"
+          go-version-file: './client/go.mod'
+          cache-dependency-path: './client/go.sum'
+      - name: Run benchmark
+        run: cd client && go test -run=^$ -bench=. -benchmem -benchtime=1s -count=5
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Go Benchmark
+          tool: 'go'
+          output-file-path: examples/go/output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Show alert with commit comment on detecting possible performance regression
+          alert-threshold: '200%'
+          # comment-on-alert: true
+          comment-always: true
+          fail-on-alert: true
+          alert-comment-cc-users: '@agajdosi'

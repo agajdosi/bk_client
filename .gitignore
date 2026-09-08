@@ -7,6 +7,8 @@ client/blenderkit-client-dev
 client/blenderkit-client-dev.exe
 client/bk_client-dev
 client/bk_client-dev.exe
+client/test_results
+client/client.test
 __debug_bin.exe
 
 bk_client-settings.json
