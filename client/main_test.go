@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -1030,11 +1031,13 @@ func mockReportHandler(w http.ResponseWriter, r *http.Request) {
 
 func BenchmarkReportHandler(b *testing.B) {
 	testCases := []struct {
-		name               string
-		accessingSoftwares []GetReportData
+		name                    string
+		accessingSoftwares      []GetReportData
+		accessingSoftwaresJsons [][]byte
 	}{
 		{
-			name: "Single software spams",
+			name:                    "Single software spams",
+			accessingSoftwaresJsons: [][]byte{},
 			accessingSoftwares: []GetReportData{
 				{
 					ProjectName: "first project",
@@ -1113,6 +1116,18 @@ func BenchmarkReportHandler(b *testing.B) {
 		},
 	}
 
+	// prepare the JSON data before the test
+	for i, testCase := range testCases {
+		for _, accessingSoftware := range testCase.accessingSoftwares {
+			jsonData, err := json.Marshal(accessingSoftware)
+			if err != nil {
+				fmt.Println("cannot marshal test data")
+			}
+			testCases[i].accessingSoftwaresJsons = append(testCases[i].accessingSoftwaresJsons, jsonData)
+		}
+	}
+
+	// discard stdout of called func during the tests
 	BKLog = log.New(io.Discard, "⬡  ", log.LstdFlags|log.Lmicroseconds)
 	for _, testCase := range testCases {
 		b.Run(testCase.name, func(b *testing.B) {
@@ -1129,13 +1144,7 @@ func BenchmarkReportHandler(b *testing.B) {
 
 				for pb.Next() {
 					i++
-					accessingSoftware := testCase.accessingSoftwares[i%len(testCase.accessingSoftwares)]
-
-					// marshaled json []byte could be prepared in testCases, saving some overhead
-					jsonData, err := json.Marshal(accessingSoftware)
-					if err != nil {
-						b.Errorf("cannot marshal test data")
-					}
+					jsonData := testCase.accessingSoftwaresJsons[i%len(testCase.accessingSoftwares)]
 
 					responseRecorder := httptest.NewRecorder()
 					req, err := http.NewRequest("GET", "/report", bytes.NewBuffer(jsonData))
@@ -1150,6 +1159,7 @@ func BenchmarkReportHandler(b *testing.B) {
 			})
 		})
 	}
+	BKLog = log.New(os.Stdout, "⬡  ", log.LstdFlags|log.Lmicroseconds)
 }
 
 func BenchmarkReportHandlerOLD(b *testing.B) {
